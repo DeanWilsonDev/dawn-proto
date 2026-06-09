@@ -1,0 +1,12 @@
+[submodule "libs/penumbra"]
+	path = libs/penumbra
+	url = https://github.com/DeanWilsonDev/penumbra-proto
+[submodule "libs/amanuensis"]
+	path = libs/amanuensis
+	url = https://github.com/DeanWilsonDev/amanuensis
+[submodule "libs/firefly"]
+	path = libs/firefly
+	url = https://github.com/DeanWilsonDev/firefly
+[submodule "libs/cimmerian"]
+	path = libs/cimmerian
+	url = https://github.com/DeanWilsonDev/cimmerian

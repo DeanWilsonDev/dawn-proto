@@ -1,0 +1,8 @@
+{
+  "project": { "name": "Dawn PoC" },
+  "paths": {
+    "schemaPath": "data/entity_schema.json",
+    "assetsRoot": "assets/",
+    "scenesRoot": "data/scenes/"
+  }
+}

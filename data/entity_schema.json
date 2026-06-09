@@ -1,0 +1,10 @@
+{
+  "entityTypes": [
+    { "id": "platform",  "displayName": "Platform",  "editorColor": "#4A90D9",
+      "defaultWidth": 200.0, "defaultHeight": 32.0 },
+    { "id": "character", "displayName": "Character", "editorColor": "#BD10E0",
+      "defaultWidth": 48.0,  "defaultHeight": 96.0 },
+    { "id": "trigger",   "displayName": "Trigger",   "editorColor": "#F5A623",
+      "defaultWidth": 64.0,  "defaultHeight": 64.0 }
+  ]
+}
