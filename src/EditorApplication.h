@@ -1,6 +1,8 @@
 #pragma once
 
 #include "DawnTheme.h"
+#include "SceneDocument.h"
+#include "SceneSerialiser.h"
 
 #include <string>
 
@@ -17,15 +19,17 @@ namespace Dawn {
 // stack, and the scene document.
 class EditorApplication {
 public:
-    EditorApplication(Theme Theme, std::string ProjectName);
+    EditorApplication(Theme Theme, ProjectData Project, EntitySchema Schema, SceneDocument Scene);
 
     // Opens the window and runs the frame loop until the user quits.
     // Returns the process exit code (0 on a clean shutdown, non-zero on init failure).
     int Run();
 
 private:
-    Theme       AppTheme;
-    std::string ProjectName;
+    Theme         AppTheme;
+    ProjectData   Project;
+    EntitySchema  Schema;
+    SceneDocument Scene;
 };
 
 } // namespace Dawn

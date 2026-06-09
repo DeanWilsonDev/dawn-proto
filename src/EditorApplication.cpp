@@ -26,8 +26,10 @@ constexpr const char* FontFileName = "JetBrainsMonoNerdFontMono-Regular.ttf";
 
 } // namespace
 
-EditorApplication::EditorApplication(Theme Theme, std::string ProjectName)
-    : AppTheme(Theme), ProjectName(std::move(ProjectName)) {}
+EditorApplication::EditorApplication(Theme Theme, ProjectData Project, EntitySchema Schema,
+                                     SceneDocument Scene)
+    : AppTheme(Theme), Project(std::move(Project)), Schema(std::move(Schema)),
+      Scene(std::move(Scene)) {}
 
 int EditorApplication::Run() {
     using namespace Penumbra::Widgets;
@@ -71,7 +73,7 @@ int EditorApplication::Run() {
         HeaderBar->Layout         = LayoutMode::HorizontalStack;
         HeaderBar->CrossAlignment = CrossAlign::Center;
         HeaderBar->ChildGap       = AppTheme.SpacingSmall;
-        HeaderBar->AddChild(MakeLabel(ProjectName, AppTheme.ColorTextPrimary));
+        HeaderBar->AddChild(MakeLabel(Project.Name, AppTheme.ColorTextPrimary));
 
         // ---- left panel: entity palette / list (placeholder in M0) ----
         auto LeftPanel = std::make_unique<Box>();

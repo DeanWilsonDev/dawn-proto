@@ -20,7 +20,12 @@ add_subdirectory(libs/firefly)
 if(NOT TARGET amanuensis)
     add_subdirectory(libs/amanuensis)
 endif()
-# Note: libs/cimmerian is added in M1 alongside the dawn_tests target.
+# cimmerian is the test framework for dawn_tests. Guarded for the same reason as
+# amanuensis: amanuensis/firefly bundle it but only add it when they are the root
+# project, so here we add it ourselves exactly once.
+if(NOT TARGET cimmerian)
+    add_subdirectory(libs/cimmerian)
+endif()
 
 # -----------------------------------------------------------------------
 # Dawn — the editor executable
@@ -28,12 +33,35 @@ endif()
 # The source list grows one milestone at a time toward the brief's final
 # CMakeLists. M0 builds only the window shell, theme, and resolvers.
 # -----------------------------------------------------------------------
+# Pure-logic modules: no SDL, Penumbra, or Firefly. Shared between dawn and the
+# SDL-free dawn_tests binary.
+set(DAWN_CORE_SOURCES
+    src/SceneDocument.cpp
+    src/SceneCommand.cpp
+    src/SceneSerialiser.cpp
+    src/UuidGenerator.cpp
+)
+
 add_executable(dawn
     src/main.cpp
     src/DawnTheme.cpp
     src/DawnResolvers.cpp
     src/EditorApplication.cpp
+    ${DAWN_CORE_SOURCES}
 )
 target_link_libraries(dawn PRIVATE penumbra amanuensis firefly)
 target_compile_definitions(dawn PRIVATE
     DAWN_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+
+# -----------------------------------------------------------------------
+# dawn_tests — pure-logic tests, NO penumbra or SDL dependency.
+# Compiles the core modules directly and links only amanuensis + cimmerian.
+# -----------------------------------------------------------------------
+add_executable(dawn_tests
+    tests/test-main.cpp
+    tests/serialisation.test.cpp
+    tests/commands.test.cpp
+    ${DAWN_CORE_SOURCES}
+)
+target_include_directories(dawn_tests PRIVATE src)
+target_link_libraries(dawn_tests PRIVATE amanuensis cimmerian)
