@@ -19,7 +19,8 @@ namespace Dawn {
 // stack, and the scene document.
 class EditorApplication {
 public:
-    EditorApplication(Theme Theme, ProjectData Project, EntitySchema Schema, SceneDocument Scene);
+    EditorApplication(Theme Theme, ProjectData Project, EntitySchema Schema, SceneDocument Scene,
+                      std::string ScenePath);
 
     // Opens the window and runs the frame loop until the user quits.
     // Returns the process exit code (0 on a clean shutdown, non-zero on init failure).
@@ -30,6 +31,7 @@ private:
     ProjectData   Project;
     EntitySchema  Schema;
     SceneDocument Scene;
+    std::string   ScenePath; // where Ctrl+S writes and Ctrl+R re-reads
 };
 
 } // namespace Dawn

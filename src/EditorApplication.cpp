@@ -16,6 +16,8 @@
 #include "Penumbra/Widgets/TextInput.h"
 #include "Penumbra/Widgets/ViewportWidget.h"
 
+#include <amanuensis.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -81,9 +83,9 @@ void FrameEntities(CameraState& Camera, const SceneDocument& Scene, SDL_FPoint C
 } // namespace
 
 EditorApplication::EditorApplication(Theme Theme, ProjectData Project, EntitySchema Schema,
-                                     SceneDocument Scene)
+                                     SceneDocument Scene, std::string ScenePath)
     : AppTheme(Theme), Project(std::move(Project)), Schema(std::move(Schema)),
-      Scene(std::move(Scene)) {}
+      Scene(std::move(Scene)), ScenePath(std::move(ScenePath)) {}
 
 int EditorApplication::Run() {
     using namespace Penumbra::Widgets;
@@ -154,6 +156,15 @@ int EditorApplication::Run() {
         bool        RequestRebuildList = false;
         bool        RequestRebuildProps = false;
 
+        // Save / reload (M4).
+        bool        RequestSave = false;
+        bool        RequestReload = false;          // user asked to reload
+        bool        RequestReloadConfirmed = false; // confirmed past the dirty prompt
+        bool        ConfirmingReload = false;       // a dirty-discard prompt is showing
+        bool        SceneFramed = false;            // false re-frames on the next frame
+        std::string StatusMessage;                  // transient header status / error text
+        SDL_Color   StatusColor = AppTheme.ColorTextSecondary;
+
         // ---- composition helpers ----
         auto MakeLabel = [&](const std::string& Text, SDL_Color Color) {
             auto Widget = std::make_unique<Label>();
@@ -196,13 +207,17 @@ int EditorApplication::Run() {
             return AppTheme.ColorTextSecondary; // unknown type → neutral grey
         };
 
-        // ---- header bar: project title (dirty indicator arrives in M4) ----
+        // ---- header bar: project title, dirty indicator, status / prompt line ----
         auto HeaderBar = std::make_unique<Box>();
         HeaderBar->Style          = ResolveHeaderBarStyle(AppTheme);
         HeaderBar->Layout         = LayoutMode::HorizontalStack;
         HeaderBar->CrossAlignment = CrossAlign::Center;
         HeaderBar->ChildGap       = AppTheme.SpacingSmall;
         HeaderBar->AddChild(MakeLabel(Project.Name, AppTheme.ColorTextPrimary));
+        Label* DirtyLabel = static_cast<Label*>(
+            HeaderBar->AddChild(MakeLabel("", AppTheme.ColorWarning)));   // "*" when dirty
+        Label* StatusLabel = static_cast<Label*>(
+            HeaderBar->AddChild(MakeLabel("", AppTheme.ColorTextSecondary))); // messages / prompt
 
         // ---- left column: entity palette + scrollable entity list ----
         auto LeftPanel            = std::make_unique<ScrollablePanel>();
@@ -379,6 +394,59 @@ int EditorApplication::Run() {
             PendingActive = false;
         };
 
+        auto SetStatus = [&](const std::string& Message, SDL_Color Color) {
+            StatusMessage = Message;
+            StatusColor   = Color;
+        };
+
+        // Serialise the scene to its file via Amanuensis. Never throws; reports IO
+        // failure through the status line and Firefly.
+        auto SaveScene = [&]() {
+            FlushPendingEdit(); // fold any live edit into the history before writing
+            const Amanuensis::Value Json = SceneSerialiser::Serialise(Scene);
+            if (Amanuensis::Writer::WriteToFile(Json, ScenePath)) {
+                Scene.ClearDirty();
+                LOG_INFO("Scene saved: {}", ScenePath);
+                SetStatus("Saved " + ScenePath, AppTheme.ColorTextSecondary);
+            } else {
+                LOG_ERROR("Failed to write scene to {}", ScenePath);
+                SetStatus("Save failed: " + ScenePath, AppTheme.ColorDestructive);
+            }
+        };
+
+        // Re-read the scene from disk, replacing the in-memory document. On a missing
+        // or malformed file it logs, shows an error, and keeps the current scene — it
+        // must never crash or leave a half-loaded document.
+        auto ReloadScene = [&]() {
+            const Amanuensis::ParseResult Parsed = Amanuensis::Reader::ParseFile(ScenePath);
+            if (!Parsed.succeeded) {
+                LOG_ERROR("Reload failed: {} at {}:{} — {}", ScenePath, Parsed.error.line,
+                          Parsed.error.column, Parsed.error.message);
+                SetStatus("Reload failed: " + Parsed.error.message, AppTheme.ColorDestructive);
+                return;
+            }
+            SceneDocument Fresh;
+            if (!SceneSerialiser::Deserialise(Parsed.value, Fresh)) {
+                LOG_ERROR("Reload failed: {} is not a valid scene object", ScenePath);
+                SetStatus("Reload failed: invalid scene", AppTheme.ColorDestructive);
+                return;
+            }
+            Scene = std::move(Fresh);
+            Scene.ClearDirty();
+            // Reset interaction state that referenced the old document.
+            SelectedId.clear();
+            ArmedType.clear();
+            Dragging      = false;
+            PendingActive = false;
+            Stack.Clear();
+            SceneFramed = false; // re-frame the reloaded scene
+            RequestRebuildList  = true;
+            RequestRebuildProps = true;
+            LOG_INFO("Scene reloaded: '{}' with {} entit{} from {}", Scene.Name,
+                     Scene.Entities.size(), Scene.Entities.size() == 1 ? "y" : "ies", ScenePath);
+            SetStatus("Reloaded " + ScenePath, AppTheme.ColorTextSecondary);
+        };
+
         // ---- central viewport ----
         auto Viewport = std::make_unique<ViewportWidget>();
         Viewport->Style           = ResolveViewportStyle(AppTheme);
@@ -467,7 +535,6 @@ int EditorApplication::Run() {
         RebuildProperties();
 
         InputState Input;
-        bool       SceneFramed = false;
         SDL_FPoint LastViewportSize{-1.0f, -1.0f};
         bool       TextInputActive = false;
         bool       KeepRunning = true;
@@ -534,14 +601,28 @@ int EditorApplication::Run() {
                 TextInputActive = WantTextInput;
             }
 
-            // Keyboard: Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z redo.
+            // Keyboard. While a dirty-reload prompt is up, keys answer it; otherwise
+            // Ctrl/Cmd+Z undo, +Shift+Z redo, +S save, +R reload.
             {
                 const bool CmdMod = (Input.ModifierState & (SDL_KMOD_CTRL | SDL_KMOD_GUI)) != 0;
                 const bool Shift  = (Input.ModifierState & SDL_KMOD_SHIFT) != 0;
-                if (CmdMod) {
-                    for (const SDL_Keycode Key : Input.KeysPressedThisFrame) {
-                        if (Key == SDLK_Z) {
-                            (Shift ? RequestRedo : RequestUndo) = true;
+                for (const SDL_Keycode Key : Input.KeysPressedThisFrame) {
+                    if (ConfirmingReload) {
+                        if (Key == SDLK_Y || Key == SDLK_RETURN) {
+                            ConfirmingReload      = false;
+                            RequestReloadConfirmed = true;
+                        } else if (Key == SDLK_N || Key == SDLK_ESCAPE) {
+                            ConfirmingReload = false;
+                            SetStatus("Reload cancelled", AppTheme.ColorTextSecondary);
+                        }
+                        continue;
+                    }
+                    if (CmdMod) {
+                        switch (Key) {
+                        case SDLK_Z: (Shift ? RequestRedo : RequestUndo) = true; break;
+                        case SDLK_S: RequestSave = true; break;
+                        case SDLK_R: RequestReload = true; break;
+                        default: break;
                         }
                     }
                 }
@@ -621,6 +702,24 @@ int EditorApplication::Run() {
                 }
                 RequestRedo = false;
             }
+            if (RequestSave) {
+                SaveScene();
+                RequestSave = false;
+            }
+            if (RequestReload) {
+                FlushPendingEdit();
+                if (Scene.IsDirty()) {
+                    ConfirmingReload = true;
+                    Focus.Focused    = nullptr; // so Y/N don't type into a field
+                } else {
+                    ReloadScene();
+                }
+                RequestReload = false;
+            }
+            if (RequestReloadConfirmed) {
+                ReloadScene();
+                RequestReloadConfirmed = false;
+            }
             if (RequestRebuildList) {
                 RebuildLeftPanel();
                 RequestRebuildList = false;
@@ -635,6 +734,16 @@ int EditorApplication::Run() {
             if (const EntityData* E = Scene.FindEntity(SelectedId)) {
                 if (PropX) PropX->Value = static_cast<float>(E->PositionX);
                 if (PropY) PropY->Value = static_cast<float>(E->PositionY);
+            }
+
+            // Dirty indicator + status / prompt line in the header.
+            DirtyLabel->Text = Scene.IsDirty() ? "*" : "";
+            if (ConfirmingReload) {
+                StatusLabel->Text      = "Discard unsaved changes and reload?  (Y / N)";
+                StatusLabel->ColorText = AppTheme.ColorWarning;
+            } else {
+                StatusLabel->Text      = StatusMessage;
+                StatusLabel->ColorText = StatusColor;
             }
 
             // ---- draw ----

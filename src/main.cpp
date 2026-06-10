@@ -85,6 +85,7 @@ int main(int argc, char** argv) {
     }
 
     Dawn::Theme Theme;
-    Dawn::EditorApplication App(Theme, std::move(Project), std::move(Schema), std::move(Scene));
+    Dawn::EditorApplication App(Theme, std::move(Project), std::move(Schema), std::move(Scene),
+                                ScenePath.string());
     return App.Run();
 }

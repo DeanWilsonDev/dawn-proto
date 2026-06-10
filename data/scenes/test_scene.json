@@ -1,8 +1,24 @@
 {
-  "scene": { "name": "test_scene", "dimensions": { "width": 3840, "height": 1080 } },
+  "scene": {
+    "name": "test_scene",
+    "dimensions": {
+      "width": 3840,
+      "height": 1080
+    }
+  },
   "layers": [
-    { "id": "background", "order": 0, "visible": true, "locked": false },
-    { "id": "midground",  "order": 1, "visible": true, "locked": false }
+    {
+      "id": "background",
+      "order": 0,
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "midground",
+      "order": 1,
+      "visible": true,
+      "locked": false
+    }
   ],
   "entities": [
     {
@@ -10,18 +26,68 @@
       "name": "floor_left",
       "type": "platform",
       "layer": "midground",
-      "transform": { "positionX": 100.0, "positionY": 800.0,
-                     "rotation": 0.0, "scaleX": 1.0, "scaleY": 1.0 },
-      "properties": { "width": 400.0, "height": 32.0 }
+      "transform": {
+        "positionX": 116.42291259765625,
+        "positionY": 868.2271728515625,
+        "rotation": 0.0,
+        "scaleX": 1.0,
+        "scaleY": 1.0
+      },
+      "properties": {
+        "width": 400.0,
+        "height": 32.0
+      }
     },
     {
       "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
       "name": "player_spawn",
       "type": "character",
       "layer": "midground",
-      "transform": { "positionX": 200.0, "positionY": 700.0,
-                     "rotation": 0.0, "scaleX": 1.0, "scaleY": 1.0 },
-      "properties": { "width": 48.0, "height": 96.0 }
+      "transform": {
+        "positionX": 279.008544921875,
+        "positionY": 726.79052734375,
+        "rotation": 0.0,
+        "scaleX": 1.0,
+        "scaleY": 1.0
+      },
+      "properties": {
+        "width": 48.0,
+        "height": 96.0
+      }
+    },
+    {
+      "id": "fb50bf80-0196-41b4-bbc5-2c8a0bc33069",
+      "name": "platform_1",
+      "type": "platform",
+      "layer": "background",
+      "transform": {
+        "positionX": 267.18212890625,
+        "positionY": 615.2979736328125,
+        "rotation": 0.0,
+        "scaleX": 1.0,
+        "scaleY": 1.0
+      },
+      "properties": {
+        "width": 200.0,
+        "height": 32.0
+      }
+    },
+    {
+      "id": "2cbf7008-6eac-408c-969f-090686736377",
+      "name": "trigger_2",
+      "type": "trigger",
+      "layer": "background",
+      "transform": {
+        "positionX": 147.2268829345703,
+        "positionY": 729.9786987304688,
+        "rotation": 0.0,
+        "scaleX": 1.0,
+        "scaleY": 1.0
+      },
+      "properties": {
+        "width": 64.0,
+        "height": 64.0
+      }
     }
   ]
 }

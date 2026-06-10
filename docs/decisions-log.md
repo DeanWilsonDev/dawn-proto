@@ -12,7 +12,7 @@ discovered along the way. It exists for two reasons:
 
 Status legend: 🔴 open · 🟡 worked around in Dawn · 🟢 fixed upstream
 
-Last updated: 2026-06-10 (after M3).
+Last updated: 2026-06-10 (after M4 — PoC complete).
 
 ---
 
@@ -21,6 +21,10 @@ Last updated: 2026-06-10 (after M3).
 These are **not** Dawn bugs. Each was hit while integrating a dependency and should be
 fixed in that library's repository. Dawn carries a local workaround so the PoC can
 proceed; the workaround should be removed once the upstream fix lands.
+
+> **Filing these:** see [`upstream-issues.md`](upstream-issues.md) for the same items
+> written as ready-to-file reports — pinned commit, reproduction, root cause, and a
+> concrete suggested patch per item. Keep the two in sync.
 
 ### 1.1 — Firefly: `FIREFLY_DEFAULT_LOGGER` redefine is unguarded 🟡
 
@@ -285,6 +289,25 @@ every frame so a viewport drag updates the readouts. The sync is idempotent with
 drag's own edits (dragging the field sets the entity, then the entity sets the field to
 the same value). The name `TextInput` is deliberately *not* synced — that would fight
 typing — and is only seeded on rebuild.
+
+### 3.13 — Save / reload go through the scene file path passed from `main`
+
+`main` derives the scene path (`<scenesRoot>/test_scene.json`, see §2.5) and hands it to
+`EditorApplication`. Ctrl+S serialises the whole document with `SceneSerialiser::Serialise`
+and `Amanuensis::Writer::WriteToFile`, clearing the dirty flag on success. Ctrl+R parses
+the file into a *fresh* `SceneDocument` and swaps it in only on success, then resets the
+interaction state that referenced the old document (selection, command stack, camera
+framing, pending edit). A missing or malformed file logs `LOG_ERROR`, shows the message
+in the header status line, and keeps the current in-memory scene — it never crashes or
+leaves a half-loaded document (the serialiser's defensive accessors guarantee no throw).
+
+### 3.14 — Dirty-discard reload prompt is a header Label, not a modal
+
+Penumbra has no modal/dialog widget, so the Ctrl+R "discard unsaved changes?" confirmation
+is a key-driven prompt rendered in the header status `Label` (warning colour). Entering the
+prompt clears keyboard focus so Y/N/Enter/Esc answer the prompt instead of typing into a
+field. Reload runs immediately when the scene is clean. Save/error feedback uses the same
+header status `Label`, coloured by severity (secondary for info, destructive for errors).
 
 ---
 
