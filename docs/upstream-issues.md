@@ -88,6 +88,10 @@ needing a workaround · **Low** = cosmetic / hygiene.
 
 ## Cimmerian
 
+> CIM-1 below is a **bug**. For Cimmerian *feature* requests (missing `ASSERT_NEAR`,
+> exception assertions, etc.) that would have improved test coverage, see the separate
+> roadmap doc [`cimmerian-feature-requests.md`](cimmerian-feature-requests.md).
+
 ### CIM-1 — `IT` / `TEST` break on commas inside `{}` test bodies · Medium
 
 - **File:** `include/cimmerian/test.hpp:92` — `#define IT(testName, BODY) TEST(testName, BODY)`
