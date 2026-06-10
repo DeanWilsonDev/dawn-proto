@@ -8,8 +8,10 @@
 #include "Penumbra/Render/SdlTtfFontBackend.h"
 #include "Penumbra/Widgets/Box.h"
 #include "Penumbra/Widgets/Label.h"
+#include "Penumbra/Widgets/ScrollablePanel.h"
 #include "Penumbra/Widgets/ViewportWidget.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,6 +25,47 @@ constexpr int WindowLogicalWidth  = 1280;
 constexpr int WindowLogicalHeight = 800;
 
 constexpr const char* FontFileName = "JetBrainsMonoNerdFontMono-Regular.ttf";
+
+// The viewport camera. Dawn owns this; the ViewportWidget provides only the render
+// seam. World→screen is (world - Offset) * Zoom, where screen is relative to the
+// scene texture's top-left (the content rect origin).
+struct CameraState {
+    float OffsetX{0.0f};
+    float OffsetY{0.0f};
+    float Zoom{1.0f};
+};
+
+SDL_Color ToSdl(Color C) { return {C.R, C.G, C.B, C.A}; }
+
+// Frames all entities: centres their bounding box in the content area at a zoom that
+// fits with margin. Run once when the scene opens so the rectangles are visible
+// without the user hunting for them. Clamped to the same zoom range as wheel zoom.
+void FrameEntities(CameraState& Camera, const SceneDocument& Scene, SDL_FPoint Content) {
+    if (Scene.Entities.empty() || Content.x <= 1.0f || Content.y <= 1.0f) {
+        return;
+    }
+    const auto& First = Scene.Entities.front();
+    float MinX = static_cast<float>(First.PositionX);
+    float MinY = static_cast<float>(First.PositionY);
+    float MaxX = static_cast<float>(First.PositionX + First.Width);
+    float MaxY = static_cast<float>(First.PositionY + First.Height);
+    for (const auto& E : Scene.Entities) {
+        MinX = std::min(MinX, static_cast<float>(E.PositionX));
+        MinY = std::min(MinY, static_cast<float>(E.PositionY));
+        MaxX = std::max(MaxX, static_cast<float>(E.PositionX + E.Width));
+        MaxY = std::max(MaxY, static_cast<float>(E.PositionY + E.Height));
+    }
+    const float BoxW = std::max(MaxX - MinX, 1.0f);
+    const float BoxH = std::max(MaxY - MinY, 1.0f);
+    constexpr float Margin = 0.8f; // leave a border around the framed content
+    const float Zoom =
+        std::clamp(std::min(Content.x * Margin / BoxW, Content.y * Margin / BoxH), 0.1f, 10.0f);
+    const float CentreX = (MinX + MaxX) * 0.5f;
+    const float CentreY = (MinY + MaxY) * 0.5f;
+    Camera.Zoom    = Zoom;
+    Camera.OffsetX = CentreX - (Content.x * 0.5f) / Zoom;
+    Camera.OffsetY = CentreY - (Content.y * 0.5f) / Zoom;
+}
 
 } // namespace
 
@@ -75,20 +118,66 @@ int EditorApplication::Run() {
         HeaderBar->ChildGap       = AppTheme.SpacingSmall;
         HeaderBar->AddChild(MakeLabel(Project.Name, AppTheme.ColorTextPrimary));
 
-        // ---- left panel: entity palette / list (placeholder in M0) ----
-        auto LeftPanel = std::make_unique<Box>();
-        LeftPanel->Style          = ResolvePanelStyle(AppTheme);
-        LeftPanel->Layout         = LayoutMode::VerticalStack;
-        LeftPanel->CrossAlignment = CrossAlign::Stretch;
-        LeftPanel->ChildGap       = AppTheme.SpacingSmall;
-        LeftPanel->AddChild(MakeLabel("Entities", AppTheme.ColorTextSecondary));
+        // Resolves an entity's draw colour from its type via the schema. Colour is a
+        // property of the type, not stored on the entity (keeps the model SDL-free).
+        auto ColorForType = [&](const std::string& Type) -> SDL_Color {
+            if (const EntityTypeInfo* Info = Schema.Find(Type)) {
+                return ToSdl(Info->EditorColor);
+            }
+            return AppTheme.ColorTextSecondary; // unknown type → neutral grey
+        };
 
-        // ---- central viewport placeholder: a dark scene area, no scene yet ----
+        // ---- left panel: scrollable entity list (one Label per entity) ----
+        auto LeftPanel = std::make_unique<ScrollablePanel>();
+        LeftPanel->Style            = ResolvePanelStyle(AppTheme);
+        LeftPanel->CrossAlignment   = CrossAlign::Stretch;
+        LeftPanel->ChildGap         = AppTheme.SpacingSmall;
+        LeftPanel->WheelStepLogical = AppTheme.SpacingLarge * 3.0f;
+        LeftPanel->AddChild(MakeLabel("Entities", AppTheme.ColorTextSecondary));
+        for (const auto& Entity : Scene.Entities) {
+            LeftPanel->AddChild(MakeLabel(Entity.Name, AppTheme.ColorTextPrimary));
+        }
+
+        // ---- central viewport: entities as coloured rectangles, with a camera ----
+        CameraState Camera;
+        SDL_FPoint  LastMousePos{0.0f, 0.0f}; // for middle-drag pan deltas
+
         auto Viewport = std::make_unique<ViewportWidget>();
         Viewport->Style           = ResolveViewportStyle(AppTheme);
         Viewport->SceneClearColor = AppTheme.ColorBackgroundBase;
-        // OnRenderScene is intentionally unset in M0 — the viewport clears to the
-        // scene background and shows an empty stage. Scene drawing arrives in M2.
+
+        // Draw each entity as a coloured rectangle at its camera-transformed position.
+        // The Renderer is already targeting the scene texture; coordinates are logical
+        // pixels relative to the content rect's top-left.
+        Viewport->OnRenderScene = [&](Penumbra::Render::Renderer& SceneRenderer, SDL_FPoint) {
+            for (const auto& Entity : Scene.Entities) {
+                const float ScreenX = (static_cast<float>(Entity.PositionX) - Camera.OffsetX) * Camera.Zoom;
+                const float ScreenY = (static_cast<float>(Entity.PositionY) - Camera.OffsetY) * Camera.Zoom;
+                const float ScreenW = static_cast<float>(Entity.Width) * Camera.Zoom;
+                const float ScreenH = static_cast<float>(Entity.Height) * Camera.Zoom;
+                SceneRenderer.DrawFilledRect({ScreenX, ScreenY, ScreenW, ScreenH},
+                                             ColorForType(Entity.Type));
+            }
+        };
+
+        // Pan with middle-mouse drag; zoom with the wheel, keeping the point under the
+        // cursor fixed in world space.
+        Viewport->OnSceneInput = [&](const Penumbra::Platform::InputState& Input,
+                                     SDL_FRect ContentRect) -> bool {
+            if (Input.MouseButtonDown[1]) { // middle button
+                Camera.OffsetX -= (Input.MousePosition.x - LastMousePos.x) / Camera.Zoom;
+                Camera.OffsetY -= (Input.MousePosition.y - LastMousePos.y) / Camera.Zoom;
+            }
+            if (Input.MouseWheelDelta != 0.0f) {
+                const float WorldX = (Input.MousePosition.x - ContentRect.x) / Camera.Zoom + Camera.OffsetX;
+                const float WorldY = (Input.MousePosition.y - ContentRect.y) / Camera.Zoom + Camera.OffsetY;
+                Camera.Zoom = std::clamp(Camera.Zoom * (1.0f + Input.MouseWheelDelta * 0.1f), 0.1f, 10.0f);
+                Camera.OffsetX = WorldX - (Input.MousePosition.x - ContentRect.x) / Camera.Zoom;
+                Camera.OffsetY = WorldY - (Input.MousePosition.y - ContentRect.y) / Camera.Zoom;
+            }
+            LastMousePos = Input.MousePosition;
+            return true;
+        };
 
         // ---- right panel: properties (placeholder in M0) ----
         auto RightPanel = std::make_unique<Box>();
@@ -99,6 +188,8 @@ int EditorApplication::Run() {
         RightPanel->AddChild(MakeLabel("Properties", AppTheme.ColorTextSecondary));
 
         Penumbra::Platform::InputState Input;
+        bool       SceneFramed = false;
+        SDL_FPoint LastViewportSize{-1.0f, -1.0f}; // forces a resize log on frame 1
         bool KeepRunning = true;
         while (KeepRunning) {
             KeepRunning = Window.PumpEventsAndBuildInput(Input);
@@ -133,6 +224,25 @@ int EditorApplication::Run() {
             Viewport->Arrange(ViewportRect);
             RightPanel->Measure({RightRect.w, RightRect.h});
             RightPanel->Arrange(RightRect);
+
+            // The scene content area (inside the viewport's border) — the space
+            // OnRenderScene draws into and the camera maps world coordinates onto.
+            const float Border = AppTheme.BorderWidthDefault;
+            const SDL_FPoint ViewportContent{ViewportRect.w - 2.0f * Border,
+                                             ViewportRect.h - 2.0f * Border};
+
+            if (ViewportRect.w != LastViewportSize.x || ViewportRect.h != LastViewportSize.y) {
+                LOG_TRACE("Viewport resized to {}x{}", ViewportRect.w, ViewportRect.h);
+                LastViewportSize = {ViewportRect.w, ViewportRect.h};
+            }
+
+            // Frame the scene once, when the content area is first known.
+            if (!SceneFramed && ViewportContent.x > 1.0f && ViewportContent.y > 1.0f) {
+                FrameEntities(Camera, Scene, ViewportContent);
+                SceneFramed = true;
+                LOG_DEBUG("Framed {} entit{} at zoom {}", Scene.Entities.size(),
+                          Scene.Entities.size() == 1 ? "y" : "ies", Camera.Zoom);
+            }
 
             // Route input. Topmost / most-specific regions get first refusal.
             if (!HeaderBar->UpdateInteractionState(Input) &&

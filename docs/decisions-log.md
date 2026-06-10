@@ -12,7 +12,7 @@ discovered along the way. It exists for two reasons:
 
 Status legend: 🔴 open · 🟡 worked around in Dawn · 🟢 fixed upstream
 
-Last updated: 2026-06-09 (after M1).
+Last updated: 2026-06-10 (after M2).
 
 ---
 
@@ -146,6 +146,11 @@ libraries. Flagged so the brief can be corrected for the next session.
   `Entity.EditorColor` (an `SDL_Color` on the entity). Storing an SDL type on the
   entity would pull SDL into the pure-logic layer and the SDL-free `dawn_tests`. Dawn
   instead resolves colour by entity *type* from the schema at render time. (See §3.1.)
+- **§2.7 Initial camera vs. "see the entities on open"** — the brief's camera defaults
+  to `{Offset 0, Zoom 1}`, but the test scene's entities sit at world y≈700–832 while
+  the viewport is only ~740px tall, so they fall off the bottom and the M2 done-when
+  ("see two coloured rectangles on open") would not be met. Dawn adds a one-time
+  frame-on-open. (See §3.7.)
 
 ---
 
@@ -196,3 +201,51 @@ Firefly is fixed.
 
 `CMakeLists.txt` only compiles the sources a milestone needs, so the project always
 builds and runs at each checkpoint. It converges on the brief's final CMake by M4.
+
+### 3.7 — Frame-on-open (one-time camera fit)
+
+When the scene opens, the camera centres the entities' bounding box in the viewport at
+a zoom that fits with an 0.8 margin (clamped to the same 0.1–10 range as wheel zoom).
+This runs once, on the first frame the content size is known. Without it the default
+`{0,0,1}` camera leaves the test scene's entities off the bottom of the viewport, so
+this is what makes the M2 done-when verifiable. Pan/zoom from the brief are otherwise
+untouched. Easy to remove if the brief prefers the raw default camera. (See §2.7.)
+
+### 3.8 — Firefly log-level conventions
+
+Settled on a consistent mapping (logger registered with debug logging on, so TRACE/
+DEBUG are visible):
+
+- **INFO** — lifecycle: startup, project/schema/scene load, window open, shutdown.
+- **DEBUG** — diagnostic one-offs: frame-on-open result, (M3) command execution.
+- **TRACE** — high-frequency events: viewport resize.
+- **WARNING** — missing-but-recoverable data: no schema, missing/invalid scene → empty doc.
+- **ERROR** — parse/IO failures that abort an operation.
+
+### 3.9 — UI and camera state currently live as `Run()` locals
+
+The widget tree, `CameraState`, and `LastMousePos` are locals inside
+`EditorApplication::Run()`, captured by reference into the viewport callbacks (the
+callbacks live as long as the widgets, which live as long as `Run()`). The entity-list
+panel is likewise built once from the loaded scene — **static in M2**. M3 introduces
+selection, a command stack, and placement that mutates the entity list, so this state
+will be promoted to `EditorApplication` members and the list rebuilt on change. Noted
+so the M2→M3 refactor is expected, not a surprise.
+
+A known, PoC-accepted limitation: `LastMousePos` updates only while the cursor is over
+the viewport, so starting a middle-drag the instant the cursor re-enters can produce a
+one-frame pan jump. Matches the brief's sample and is not worth fixing for the PoC.
+
+---
+
+## 4. Tooling notes
+
+### 4.1 — Editor/LSP reports phantom missing-include errors
+
+There is no `compile_commands.json` at the repo root, so clangd-based editor
+diagnostics can't resolve the submodule include paths and flag false positives like
+*"'firefly/log.hpp' file not found"* or *"Unknown type name 'SDL_Color'"* in
+`EditorApplication.cpp`. **These are not real** — the CMake build compiles and links
+cleanly. If editor diagnostics are wanted, point the LSP at the generated
+`build/compile_commands.json` (CMake writes one; symlink it to the repo root). Don't
+chase these as build errors.

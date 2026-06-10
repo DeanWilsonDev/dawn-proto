@@ -4,6 +4,7 @@ project(Dawn VERSION 0.0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # SDL3 is pulled in transitively via penumbra; Dawn needs the headers here because
 # Penumbra's public widget API exposes SDL types (SDL_Color, SDL_FRect, InputState).
