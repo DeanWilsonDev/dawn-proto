@@ -4,3 +4,4 @@ dawn.log.csv
 *.png
 run.out
 /.cache/
+compile_commands.json
