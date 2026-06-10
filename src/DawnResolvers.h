@@ -20,4 +20,14 @@ Penumbra::Widgets::BoxStyle ResolveHeaderBarStyle(const Theme&);
 // this only styles the frame (background shown behind/around the scene texture).
 Penumbra::Widgets::BoxStyle ResolveViewportStyle(const Theme&);
 
+// An accent (amber) action button — used for the entity palette.
+Penumbra::Widgets::ButtonStyle ResolvePaletteButtonStyle(const Theme&);
+
+// A flat, full-width list row button — used for entity-list entries. The caller
+// recolours the background/label for the selected row.
+Penumbra::Widgets::ButtonStyle ResolveListButtonStyle(const Theme&);
+
+// A text/numeric input field — used by the properties panel's name and x/y fields.
+Penumbra::Widgets::BoxStyle ResolveInputFieldStyle(const Theme&);
+
 } // namespace Dawn

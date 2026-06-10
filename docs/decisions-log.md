@@ -12,7 +12,7 @@ discovered along the way. It exists for two reasons:
 
 Status legend: 🔴 open · 🟡 worked around in Dawn · 🟢 fixed upstream
 
-Last updated: 2026-06-10 (after M2).
+Last updated: 2026-06-10 (after M3).
 
 ---
 
@@ -151,6 +151,13 @@ libraries. Flagged so the brief can be corrected for the next session.
   the viewport is only ~740px tall, so they fall off the bottom and the M2 done-when
   ("see two coloured rectangles on open") would not be met. Dawn adds a one-time
   frame-on-open. (See §3.7.)
+- **§2.8 Entity-list rows are Buttons, not Labels** — the brief calls the left-panel
+  entity list "selectable Labels," but a `Label` is a non-interactive leaf. To make
+  rows clickable-to-select, Dawn uses flat `Button`s styled to read as list rows. (See
+  §3.10.)
+- **§2.9 Undo modifier** — the brief says Ctrl+Z / Ctrl+Shift+Z. On macOS the natural
+  key is Cmd. Dawn accepts **either** Ctrl or Cmd (`SDL_KMOD_CTRL | SDL_KMOD_GUI`) so it
+  works on both without changing the brief's intent.
 
 ---
 
@@ -235,6 +242,49 @@ so the M2→M3 refactor is expected, not a surprise.
 A known, PoC-accepted limitation: `LastMousePos` updates only while the cursor is over
 the viewport, so starting a middle-drag the instant the cursor re-enters can produce a
 one-frame pan jump. Matches the brief's sample and is not worth fixing for the PoC.
+
+**M3 update:** the interaction state (command stack, selection, armed type, drag, focus,
+pending-edit, deferred requests) stayed as `Run()` locals organised with helper lambdas,
+rather than being promoted to `EditorApplication` members as this section originally
+anticipated. The font backend and renderer must be destroyed before the window, which
+keeps them — and everything that captures them — inside `Run()`'s inner scope; promoting
+the rest to members would split related state across two lifetimes for little gain. If
+the class grows much further (M4+), revisit.
+
+### 3.10 — Deferred widget-tree mutation (retained-mode safety)
+
+Widget callbacks never rebuild or destroy widgets synchronously: doing so could free a
+widget while it is still on the call stack (e.g. a palette `Button` rebuilding the panel
+it lives in from inside its own `OnClicked`). Instead, callbacks set request flags
+(place / select / clear / undo / redo / rebuild) and the frame loop applies them in a
+post-input phase, after every widget's `UpdateInteractionState` has returned. Live model
+edits that don't touch the widget tree (drag moving an entity, typing a name) are applied
+immediately; only tree rebuilds are deferred. The left-panel entity rows are flat
+`Button`s so they're selectable. (See §2.8.)
+
+### 3.11 — Live-edit-then-commit undo model
+
+Drags and properties-panel edits mutate the `SceneDocument` directly for responsiveness,
+then are committed as discrete undoable commands via `CommandStack::Record` (which stores
+an already-applied command without re-executing it). A "pending edit" snapshot of the
+selected entity (name + position) is taken when selection changes; `FlushPendingEdit`
+compares the live entity to the snapshot at each boundary (drag release, selection
+change, place, undo, redo) and records a `MoveEntityCommand` and/or `RenameEntityCommand`
+for the net change. Undo/redo flush first, so an in-progress live edit becomes its own
+committed step that is then reversed. This is what makes "place, drag, rename → undo all
+three step by step" produce exactly three undo steps. `RenameEntityCommand` and
+`MoveEntityCommand` are the M3 additions to the command set; both are pure-logic and unit
+tested. `FlushPendingEdit` applies a 0.5px dead-zone: a click-to-select that jitters the
+cursor a fraction of a pixel is snapped back and *not* recorded, so it can't leave a
+no-op move on the undo stack (caught during M3 interactive verification).
+
+### 3.12 — Properties X/Y synced from the entity each frame
+
+The two position `NumericDrag`s are written from the selected entity's live position
+every frame so a viewport drag updates the readouts. The sync is idempotent with the
+drag's own edits (dragging the field sets the entity, then the entity sets the field to
+the same value). The name `TextInput` is deliberately *not* synced — that would fight
+typing — and is only seeded on rebuild.
 
 ---
 

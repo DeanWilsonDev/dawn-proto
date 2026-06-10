@@ -47,6 +47,11 @@ public:
     // Runs Command against Document and records it for undo.
     void Execute(std::unique_ptr<SceneCommand> Command, SceneDocument& Document);
 
+    // Records a command whose effect has *already* been applied to the document (e.g.
+    // a live drag or property edit), without calling Execute. Still clears redo. Undo
+    // reverses it; a later Redo re-applies it via Execute.
+    void Record(std::unique_ptr<SceneCommand> Command);
+
     bool CanUndo() const { return !UndoStack.empty(); }
     bool CanRedo() const { return !RedoStack.empty(); }
 
@@ -81,6 +86,35 @@ public:
 
 private:
     EntityData Entity;
+};
+
+// Moves an entity from one position to another. Used to make a viewport drag or a
+// properties-panel position edit a single undoable step; the live edit is applied
+// first, then this is recorded with the net before/after via CommandStack::Record.
+class MoveEntityCommand : public SceneCommand {
+public:
+    MoveEntityCommand(std::string Id, double FromX, double FromY, double ToX, double ToY);
+
+    void        Execute(SceneDocument& Document) override;
+    void        Undo(SceneDocument& Document) override;
+    std::string Describe() const override;
+
+private:
+    std::string Id;
+    double      FromX, FromY, ToX, ToY;
+};
+
+// Renames an entity. Recorded (not executed) after a live properties-panel edit.
+class RenameEntityCommand : public SceneCommand {
+public:
+    RenameEntityCommand(std::string Id, std::string From, std::string To);
+
+    void        Execute(SceneDocument& Document) override;
+    void        Undo(SceneDocument& Document) override;
+    std::string Describe() const override;
+
+private:
+    std::string Id, From, To;
 };
 
 } // namespace Dawn

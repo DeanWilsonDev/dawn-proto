@@ -3,3 +3,4 @@
 dawn.log.csv
 *.png
 run.out
+/.cache/
