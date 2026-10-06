@@ -114,7 +114,9 @@ libs/                   # the four dependency submodules
 
 ## Building & running
 
-**Requirements:** CMake ≥ 3.24, a C++20 compiler, and SDL3 + SDL3_ttf. On macOS:
+**Requirements:** CMake ≥ 3.30, a C++26 compiler (GCC ≥ 14, Clang ≥ 18, or a recent
+AppleClang; on Windows, clang-cl from Clang ≥ 18, not MSVC's cl.exe), and SDL3 +
+SDL3_ttf. On macOS:
 
 ```bash
 brew install sdl3 sdl3_ttf      # tested with sdl3 3.4.10, sdl3_ttf 3.2.2
