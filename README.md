@@ -114,8 +114,8 @@ libs/                   # the four dependency submodules
 
 ## Building & running
 
-**Requirements:** CMake ≥ 3.30, a C++26 compiler (GCC ≥ 14, Clang ≥ 18, or a recent
-AppleClang; on Windows, clang-cl from Clang ≥ 18, not MSVC's cl.exe), and SDL3 +
+**Requirements:** CMake ≥ 3.30, a C++26 compiler (GCC ≥ 14, Clang ≥ 19, or a recent
+AppleClang; on Windows, clang-cl from Clang ≥ 19, not MSVC's cl.exe), and SDL3 +
 SDL3_ttf. On macOS:
 
 ```bash
