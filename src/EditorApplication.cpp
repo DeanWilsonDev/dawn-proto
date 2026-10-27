@@ -403,7 +403,7 @@ int EditorApplication::Run() {
         // failure through the status line and Firefly.
         auto SaveScene = [&]() {
             FlushPendingEdit(); // fold any live edit into the history before writing
-            const Amanuensis::Value Json = SceneSerialiser::Serialise(Scene);
+            const Amanuensis::JsonValue Json = SceneSerialiser::Serialise(Scene);
             if (Amanuensis::Writer::WriteToFile(Json, ScenePath)) {
                 Scene.ClearDirty();
                 LOG_INFO("Scene saved: {}", ScenePath);
@@ -418,7 +418,7 @@ int EditorApplication::Run() {
         // or malformed file it logs, shows an error, and keeps the current scene — it
         // must never crash or leave a half-loaded document.
         auto ReloadScene = [&]() {
-            const Amanuensis::ParseResult Parsed = Amanuensis::Reader::ParseFile(ScenePath);
+            const Amanuensis::JsonParseResult Parsed = Amanuensis::Reader::ParseFile(ScenePath);
             if (!Parsed.succeeded) {
                 LOG_ERROR("Reload failed: {} at {}:{} — {}", ScenePath, Parsed.error.line,
                           Parsed.error.column, Parsed.error.message);

@@ -2,7 +2,7 @@
 
 #include "SceneDocument.h"
 
-#include <amanuensis/value.hpp>
+#include <amanuensis/json.hpp>
 
 #include <string>
 #include <vector>
@@ -47,25 +47,25 @@ struct ProjectData {
 };
 
 // All scene/project/schema JSON read and write for Dawn, via Amanuensis. Pure logic:
-// operates on already-parsed Amanuensis::Value trees, returns plain structs, and is
+// operates on already-parsed Amanuensis::JsonValue trees, returns plain structs, and is
 // defensive — missing or wrong-typed fields fall back to defaults rather than throw,
 // so a malformed file degrades gracefully instead of crashing. File IO (ParseFile /
 // WriteToFile) and any logging stay with the caller, which owns Firefly.
 class SceneSerialiser {
 public:
     // .dawn project file. Returns false only if Root is not a JSON object.
-    static bool DeserialiseProject(const Amanuensis::Value& Root, ProjectData& Out);
+    static bool DeserialiseProject(const Amanuensis::JsonValue& Root, ProjectData& Out);
 
     // entity_schema.json. Returns false if Root is not an object or lacks entityTypes.
-    static bool DeserialiseSchema(const Amanuensis::Value& Root, EntitySchema& Out);
+    static bool DeserialiseSchema(const Amanuensis::JsonValue& Root, EntitySchema& Out);
 
     // scene JSON -> document. Returns false if Root is not an object. Populates the
     // document with whatever valid fields are present.
-    static bool Deserialise(const Amanuensis::Value& Root, SceneDocument& OutDocument);
+    static bool Deserialise(const Amanuensis::JsonValue& Root, SceneDocument& OutDocument);
 
     // document -> scene JSON, matching the bootstrap scene format exactly so a
     // load/save round-trip is lossless.
-    static Amanuensis::Value Serialise(const SceneDocument& Document);
+    static Amanuensis::JsonValue Serialise(const SceneDocument& Document);
 };
 
 } // namespace Dawn
