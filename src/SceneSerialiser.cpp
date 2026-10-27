@@ -1,6 +1,8 @@
 #include "SceneSerialiser.h"
 
 #include <cctype>
+#include <cmath>
+#include <optional>
 #include <utility>
 
 namespace Dawn {
@@ -22,8 +24,16 @@ double NumberAsDouble(const JsonValue& Number) {
     return Json::IsInteger(Number) ? static_cast<double>(Json::AsInteger(Number)) : Json::AsDouble(Number);
 }
 
-long long NumberAsInteger(const JsonValue& Number) {
-    return Json::IsInteger(Number) ? Json::AsInteger(Number) : static_cast<long long>(Json::AsDouble(Number));
+std::optional<long long> NumberAsInteger(const JsonValue& Number) {
+    if (Json::IsInteger(Number)) {
+        return Json::AsInteger(Number);
+    }
+    const double Value = Json::AsDouble(Number);
+    constexpr double FirstDoubleAboveLongLong = 9223372036854775808.0;
+    if (!std::isfinite(Value) || Value < -FirstDoubleAboveLongLong || Value >= FirstDoubleAboveLongLong) {
+        return std::nullopt;
+    }
+    return static_cast<long long>(Value);
 }
 
 std::string GetString(const JsonValue& Object, const char* Key, const std::string& Fallback = "") {
@@ -38,7 +48,10 @@ double GetDouble(const JsonValue& Object, const char* Key, double Fallback = 0.0
 
 long long GetInt(const JsonValue& Object, const char* Key, long long Fallback = 0) {
     const JsonValue* Found = FindField(Object, Key);
-    return (Found && Json::IsNumber(*Found)) ? NumberAsInteger(*Found) : Fallback;
+    if (!Found || !Json::IsNumber(*Found)) {
+        return Fallback;
+    }
+    return NumberAsInteger(*Found).value_or(Fallback);
 }
 
 bool GetBool(const JsonValue& Object, const char* Key, bool Fallback = false) {

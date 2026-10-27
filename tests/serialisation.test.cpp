@@ -122,6 +122,20 @@ DESCRIBE("SceneSerialiser", {
         ASSERT_EQUAL(Doc.Entities[0].PositionX, 0.0);
         ASSERT_EQUAL(Doc.Entities[0].ScaleX, 1.0); // default, not zero
     });
+
+    IT("falls back on an integer field too large for a long long", {
+        auto ParseResult = Amanuensis::Reader::ParseString(
+            R"({ "scene": { "name": "huge", "dimensions": { "width": 9223372036854775808, "height": 1e300 } },)"
+            R"( "layers": [ { "id": "l", "order": -1e19 } ] })");
+        REQUIRE_TRUE(ParseResult.succeeded);
+
+        SceneDocument Doc;
+        REQUIRE_TRUE(SceneSerialiser::Deserialise(ParseResult.value, Doc));
+        ASSERT_EQUAL(Doc.DimensionsWidth, 0LL);
+        ASSERT_EQUAL(Doc.DimensionsHeight, 0LL);
+        REQUIRE_EQUAL(Doc.Layers.size(), std::size_t{1});
+        ASSERT_EQUAL(Doc.Layers[0].Order, 0LL);
+    });
 });
 
 DESCRIBE("ParseHexColor", {
