@@ -5,6 +5,7 @@
 
 #include <amanuensis/io/reader.hpp>
 #include <amanuensis/io/writer.hpp>
+#include <amanuensis/json.hpp>
 
 #include <string>
 
@@ -43,6 +44,8 @@ const char* const SampleScene = R"({
 
 } // namespace
 
+using Amanuensis::Json;
+
 DESCRIBE("SceneSerialiser", {
     IT("round-trips a scene without data loss", {
         auto ParseResult = Amanuensis::Reader::ParseString(SampleScene);
@@ -51,24 +54,24 @@ DESCRIBE("SceneSerialiser", {
         SceneDocument Doc;
         REQUIRE_TRUE(SceneSerialiser::Deserialise(ParseResult.value, Doc));
 
-        Amanuensis::Value Written = SceneSerialiser::Serialise(Doc);
+        Amanuensis::JsonValue Written = SceneSerialiser::Serialise(Doc);
         std::string RoundTripped = Amanuensis::Writer::WriteToString(Written);
 
         auto ReParseResult = Amanuensis::Reader::ParseString(RoundTripped);
         REQUIRE_TRUE(ReParseResult.succeeded);
-        const Amanuensis::Value& Re = ReParseResult.value;
+        const Amanuensis::JsonValue& Re = ReParseResult.value;
 
-        ASSERT_EQUAL(Re.Get("scene").Get("name").AsString(), std::string("test_scene"));
-        ASSERT_EQUAL(Re.Get("scene").Get("dimensions").Get("width").AsInteger(),
+        ASSERT_EQUAL(Json::AsString(Json::Get(Json::Get(Re, "scene"), "name")), std::string("test_scene"));
+        ASSERT_EQUAL(Json::AsInteger(Json::Get(Json::Get(Json::Get(Re, "scene"), "dimensions"), "width")),
                      static_cast<long long>(3840));
-        ASSERT_EQUAL(Re.Get("layers").Size(), std::size_t{2});
-        ASSERT_EQUAL(Re.Get("entities").Size(), std::size_t{2});
+        ASSERT_EQUAL(Json::Size(Json::Get(Re, "layers")), std::size_t{2});
+        ASSERT_EQUAL(Json::Size(Json::Get(Re, "entities")), std::size_t{2});
 
-        const Amanuensis::Value& Entity0 = Re.Get("entities").At(0);
-        ASSERT_EQUAL(Entity0.Get("name").AsString(), std::string("floor_left"));
-        ASSERT_EQUAL(Entity0.Get("type").AsString(), std::string("platform"));
-        ASSERT_EQUAL(Entity0.Get("transform").Get("positionX").AsDouble(), 100.0);
-        ASSERT_EQUAL(Entity0.Get("properties").Get("width").AsDouble(), 400.0);
+        const Amanuensis::JsonValue& Entity0 = Json::At(Json::Get(Re, "entities"), 0);
+        ASSERT_EQUAL(Json::AsString(Json::Get(Entity0, "name")), std::string("floor_left"));
+        ASSERT_EQUAL(Json::AsString(Json::Get(Entity0, "type")), std::string("platform"));
+        ASSERT_EQUAL(Json::AsDouble(Json::Get(Json::Get(Entity0, "transform"), "positionX")), 100.0);
+        ASSERT_EQUAL(Json::AsDouble(Json::Get(Json::Get(Entity0, "properties"), "width")), 400.0);
     });
 
     IT("deserialises entity transform and properties correctly", {

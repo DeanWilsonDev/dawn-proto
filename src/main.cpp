@@ -17,8 +17,8 @@ constexpr const char* DefaultSceneFileName = "test_scene.json";
 
 // Parses a JSON file via Amanuensis, logging any IO/parse failure on the way out.
 // Returns nullopt on failure so the caller can decide how to degrade.
-std::optional<Amanuensis::Value> LoadJsonFile(const std::filesystem::path& Path) {
-    const Amanuensis::ParseResult Result = Amanuensis::Reader::ParseFile(Path);
+std::optional<Amanuensis::JsonValue> LoadJsonFile(const std::filesystem::path& Path) {
+    const Amanuensis::JsonParseResult Result = Amanuensis::Reader::ParseFile(Path);
     if (!Result.succeeded) {
         LOG_ERROR("Failed to parse {} at {}:{} — {}", Path.string(), Result.error.line,
                   Result.error.column, Result.error.message);
@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
     const std::filesystem::path ProjectPath = argv[1];
     LOG_INFO("Opening project file: {}", ProjectPath.string());
 
-    const std::optional<Amanuensis::Value> ProjectJson = LoadJsonFile(ProjectPath);
+    const std::optional<Amanuensis::JsonValue> ProjectJson = LoadJsonFile(ProjectPath);
     if (!ProjectJson) {
         return 1; // already logged
     }
@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
     Dawn::EntitySchema Schema;
     if (Project.SchemaPath.empty()) {
         LOG_WARNING("Project specifies no schemaPath; entity palette will be empty");
-    } else if (const std::optional<Amanuensis::Value> SchemaJson = LoadJsonFile(Project.SchemaPath)) {
+    } else if (const std::optional<Amanuensis::JsonValue> SchemaJson = LoadJsonFile(Project.SchemaPath)) {
         if (Dawn::SceneSerialiser::DeserialiseSchema(*SchemaJson, Schema)) {
             LOG_INFO("Schema loaded: {} entity type(s)", Schema.Types.size());
         } else {
@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
     Dawn::SceneDocument Scene;
     const std::filesystem::path ScenePath =
         std::filesystem::path(Project.ScenesRoot) / DefaultSceneFileName;
-    if (const std::optional<Amanuensis::Value> SceneJson = LoadJsonFile(ScenePath)) {
+    if (const std::optional<Amanuensis::JsonValue> SceneJson = LoadJsonFile(ScenePath)) {
         if (Dawn::SceneSerialiser::Deserialise(*SceneJson, Scene)) {
             LOG_INFO("Scene loaded: '{}' with {} entit{} from {}", Scene.Name,
                      Scene.Entities.size(), Scene.Entities.size() == 1 ? "y" : "ies",

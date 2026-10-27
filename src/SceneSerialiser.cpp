@@ -1,44 +1,63 @@
 #include "SceneSerialiser.h"
 
 #include <cctype>
+#include <utility>
 
 namespace Dawn {
 
 namespace {
 
-using Amanuensis::Value;
+using Amanuensis::Json;
+using Amanuensis::JsonValue;
 
 // ---- safe, non-throwing field accessors -----------------------------------
 // Amanuensis' As* accessors throw on a type mismatch, so every read goes through
 // these: they check presence and type and fall back to a default otherwise.
 
-std::string GetString(const Value& Object, const char* Key, const std::string& Fallback = "") {
-    const Value* Found = Object.IsObject() ? Object.Find(Key) : nullptr;
-    return (Found && Found->IsString()) ? Found->AsString() : Fallback;
+const JsonValue* FindField(const JsonValue& Object, const char* Key) {
+    return Json::IsObject(Object) ? Json::Find(Object, Key) : nullptr;
 }
 
-double GetDouble(const Value& Object, const char* Key, double Fallback = 0.0) {
-    const Value* Found = Object.IsObject() ? Object.Find(Key) : nullptr;
-    return (Found && Found->IsNumber()) ? Found->AsDouble() : Fallback;
+double NumberAsDouble(const JsonValue& Number) {
+    return Json::IsInteger(Number) ? static_cast<double>(Json::AsInteger(Number)) : Json::AsDouble(Number);
 }
 
-long long GetInt(const Value& Object, const char* Key, long long Fallback = 0) {
-    const Value* Found = Object.IsObject() ? Object.Find(Key) : nullptr;
-    return (Found && Found->IsNumber()) ? Found->AsInteger() : Fallback;
+long long NumberAsInteger(const JsonValue& Number) {
+    return Json::IsInteger(Number) ? Json::AsInteger(Number) : static_cast<long long>(Json::AsDouble(Number));
 }
 
-bool GetBool(const Value& Object, const char* Key, bool Fallback = false) {
-    const Value* Found = Object.IsObject() ? Object.Find(Key) : nullptr;
-    return (Found && Found->IsBoolean()) ? Found->AsBoolean() : Fallback;
+std::string GetString(const JsonValue& Object, const char* Key, const std::string& Fallback = "") {
+    const JsonValue* Found = FindField(Object, Key);
+    return (Found && Json::IsString(*Found)) ? Json::AsString(*Found) : Fallback;
+}
+
+double GetDouble(const JsonValue& Object, const char* Key, double Fallback = 0.0) {
+    const JsonValue* Found = FindField(Object, Key);
+    return (Found && Json::IsNumber(*Found)) ? NumberAsDouble(*Found) : Fallback;
+}
+
+long long GetInt(const JsonValue& Object, const char* Key, long long Fallback = 0) {
+    const JsonValue* Found = FindField(Object, Key);
+    return (Found && Json::IsNumber(*Found)) ? NumberAsInteger(*Found) : Fallback;
+}
+
+bool GetBool(const JsonValue& Object, const char* Key, bool Fallback = false) {
+    const JsonValue* Found = FindField(Object, Key);
+    return (Found && Json::IsBoolean(*Found)) ? Json::AsBoolean(*Found) : Fallback;
 }
 
 // Returns a child object/array by key, or a reference to a shared empty Null value
 // when absent — lets callers chain reads without intermediate null checks.
-const Value& Child(const Value& Object, const char* Key) {
-    static const Value Empty;
-    const Value* Found = Object.IsObject() ? Object.Find(Key) : nullptr;
+const JsonValue& Child(const JsonValue& Object, const char* Key) {
+    static const JsonValue Empty;
+    const JsonValue* Found = FindField(Object, Key);
     return Found ? *Found : Empty;
 }
+
+JsonValue MakeJsonValue(std::string Text) { return JsonValue{std::move(Text)}; }
+JsonValue MakeJsonValue(long long Number) { return JsonValue{Number}; }
+JsonValue MakeJsonValue(double Number) { return JsonValue{Number}; }
+JsonValue MakeJsonValue(bool Flag) { return JsonValue{Flag}; }
 
 int HexNibble(char C) {
     if (C >= '0' && C <= '9') return C - '0';
@@ -80,12 +99,12 @@ const EntityTypeInfo* EntitySchema::Find(const std::string& Id) const {
     return nullptr;
 }
 
-bool SceneSerialiser::DeserialiseProject(const Value& Root, ProjectData& Out) {
-    if (!Root.IsObject()) {
+bool SceneSerialiser::DeserialiseProject(const JsonValue& Root, ProjectData& Out) {
+    if (!Json::IsObject(Root)) {
         return false;
     }
-    const Value& Project = Child(Root, "project");
-    const Value& Paths   = Child(Root, "paths");
+    const JsonValue& Project = Child(Root, "project");
+    const JsonValue& Paths   = Child(Root, "paths");
 
     Out.Name       = GetString(Project, "name", "Untitled");
     Out.SchemaPath = GetString(Paths, "schemaPath");
@@ -94,18 +113,18 @@ bool SceneSerialiser::DeserialiseProject(const Value& Root, ProjectData& Out) {
     return true;
 }
 
-bool SceneSerialiser::DeserialiseSchema(const Value& Root, EntitySchema& Out) {
+bool SceneSerialiser::DeserialiseSchema(const JsonValue& Root, EntitySchema& Out) {
     Out.Types.clear();
-    if (!Root.IsObject()) {
+    if (!Json::IsObject(Root)) {
         return false;
     }
-    const Value& Types = Child(Root, "entityTypes");
-    if (!Types.IsArray()) {
+    const JsonValue& Types = Child(Root, "entityTypes");
+    if (!Json::IsArray(Types)) {
         return false;
     }
-    for (std::size_t Index = 0; Index < Types.Size(); ++Index) {
-        const Value& Entry = Types.At(Index);
-        if (!Entry.IsObject()) {
+    for (std::size_t Index = 0; Index < Json::Size(Types); ++Index) {
+        const JsonValue& Entry = Json::At(Types, Index);
+        if (!Json::IsObject(Entry)) {
             continue;
         }
         EntityTypeInfo Info;
@@ -121,22 +140,22 @@ bool SceneSerialiser::DeserialiseSchema(const Value& Root, EntitySchema& Out) {
     return true;
 }
 
-bool SceneSerialiser::Deserialise(const Value& Root, SceneDocument& OutDocument) {
-    if (!Root.IsObject()) {
+bool SceneSerialiser::Deserialise(const JsonValue& Root, SceneDocument& OutDocument) {
+    if (!Json::IsObject(Root)) {
         return false;
     }
 
-    const Value& Scene      = Child(Root, "scene");
-    const Value& Dimensions = Child(Scene, "dimensions");
+    const JsonValue& Scene      = Child(Root, "scene");
+    const JsonValue& Dimensions = Child(Scene, "dimensions");
     OutDocument.Name             = GetString(Scene, "name");
     OutDocument.DimensionsWidth  = GetInt(Dimensions, "width");
     OutDocument.DimensionsHeight = GetInt(Dimensions, "height");
 
     OutDocument.Layers.clear();
-    const Value& Layers = Child(Root, "layers");
-    if (Layers.IsArray()) {
-        for (std::size_t Index = 0; Index < Layers.Size(); ++Index) {
-            const Value& Entry = Layers.At(Index);
+    const JsonValue& Layers = Child(Root, "layers");
+    if (Json::IsArray(Layers)) {
+        for (std::size_t Index = 0; Index < Json::Size(Layers); ++Index) {
+            const JsonValue& Entry = Json::At(Layers, Index);
             LayerData Layer;
             Layer.Id      = GetString(Entry, "id");
             Layer.Order   = GetInt(Entry, "order");
@@ -147,12 +166,12 @@ bool SceneSerialiser::Deserialise(const Value& Root, SceneDocument& OutDocument)
     }
 
     OutDocument.Entities.clear();
-    const Value& Entities = Child(Root, "entities");
-    if (Entities.IsArray()) {
-        for (std::size_t Index = 0; Index < Entities.Size(); ++Index) {
-            const Value& Entry      = Entities.At(Index);
-            const Value& Transform  = Child(Entry, "transform");
-            const Value& Properties = Child(Entry, "properties");
+    const JsonValue& Entities = Child(Root, "entities");
+    if (Json::IsArray(Entities)) {
+        for (std::size_t Index = 0; Index < Json::Size(Entities); ++Index) {
+            const JsonValue& Entry      = Json::At(Entities, Index);
+            const JsonValue& Transform  = Child(Entry, "transform");
+            const JsonValue& Properties = Child(Entry, "properties");
 
             EntityData Entity;
             Entity.Id        = GetString(Entry, "id");
@@ -173,52 +192,52 @@ bool SceneSerialiser::Deserialise(const Value& Root, SceneDocument& OutDocument)
     return true;
 }
 
-Value SceneSerialiser::Serialise(const SceneDocument& Document) {
-    Value Root = Value::MakeObject();
+JsonValue SceneSerialiser::Serialise(const SceneDocument& Document) {
+    JsonValue Root = Json::MakeObject();
 
-    Value Scene = Value::MakeObject();
-    Scene.Insert("name", Document.Name);
-    Value Dimensions = Value::MakeObject();
-    Dimensions.Insert("width", static_cast<long long>(Document.DimensionsWidth));
-    Dimensions.Insert("height", static_cast<long long>(Document.DimensionsHeight));
-    Scene.Insert("dimensions", Dimensions);
-    Root.Insert("scene", Scene);
+    JsonValue Scene = Json::MakeObject();
+    Json::Insert(Scene, "name", MakeJsonValue(Document.Name));
+    JsonValue Dimensions = Json::MakeObject();
+    Json::Insert(Dimensions, "width", MakeJsonValue(static_cast<long long>(Document.DimensionsWidth)));
+    Json::Insert(Dimensions, "height", MakeJsonValue(static_cast<long long>(Document.DimensionsHeight)));
+    Json::Insert(Scene, "dimensions", std::move(Dimensions));
+    Json::Insert(Root, "scene", std::move(Scene));
 
-    Value Layers = Value::MakeArray();
+    JsonValue Layers = Json::MakeArray();
     for (const auto& Layer : Document.Layers) {
-        Value Entry = Value::MakeObject();
-        Entry.Insert("id", Layer.Id);
-        Entry.Insert("order", static_cast<long long>(Layer.Order));
-        Entry.Insert("visible", Layer.Visible);
-        Entry.Insert("locked", Layer.Locked);
-        Layers.PushBack(Entry);
+        JsonValue Entry = Json::MakeObject();
+        Json::Insert(Entry, "id", MakeJsonValue(Layer.Id));
+        Json::Insert(Entry, "order", MakeJsonValue(static_cast<long long>(Layer.Order)));
+        Json::Insert(Entry, "visible", MakeJsonValue(Layer.Visible));
+        Json::Insert(Entry, "locked", MakeJsonValue(Layer.Locked));
+        Json::PushBack(Layers, std::move(Entry));
     }
-    Root.Insert("layers", Layers);
+    Json::Insert(Root, "layers", std::move(Layers));
 
-    Value Entities = Value::MakeArray();
+    JsonValue Entities = Json::MakeArray();
     for (const auto& Entity : Document.Entities) {
-        Value Entry = Value::MakeObject();
-        Entry.Insert("id", Entity.Id);
-        Entry.Insert("name", Entity.Name);
-        Entry.Insert("type", Entity.Type);
-        Entry.Insert("layer", Entity.Layer);
+        JsonValue Entry = Json::MakeObject();
+        Json::Insert(Entry, "id", MakeJsonValue(Entity.Id));
+        Json::Insert(Entry, "name", MakeJsonValue(Entity.Name));
+        Json::Insert(Entry, "type", MakeJsonValue(Entity.Type));
+        Json::Insert(Entry, "layer", MakeJsonValue(Entity.Layer));
 
-        Value Transform = Value::MakeObject();
-        Transform.Insert("positionX", Entity.PositionX);
-        Transform.Insert("positionY", Entity.PositionY);
-        Transform.Insert("rotation", Entity.Rotation);
-        Transform.Insert("scaleX", Entity.ScaleX);
-        Transform.Insert("scaleY", Entity.ScaleY);
-        Entry.Insert("transform", Transform);
+        JsonValue Transform = Json::MakeObject();
+        Json::Insert(Transform, "positionX", MakeJsonValue(Entity.PositionX));
+        Json::Insert(Transform, "positionY", MakeJsonValue(Entity.PositionY));
+        Json::Insert(Transform, "rotation", MakeJsonValue(Entity.Rotation));
+        Json::Insert(Transform, "scaleX", MakeJsonValue(Entity.ScaleX));
+        Json::Insert(Transform, "scaleY", MakeJsonValue(Entity.ScaleY));
+        Json::Insert(Entry, "transform", std::move(Transform));
 
-        Value Properties = Value::MakeObject();
-        Properties.Insert("width", Entity.Width);
-        Properties.Insert("height", Entity.Height);
-        Entry.Insert("properties", Properties);
+        JsonValue Properties = Json::MakeObject();
+        Json::Insert(Properties, "width", MakeJsonValue(Entity.Width));
+        Json::Insert(Properties, "height", MakeJsonValue(Entity.Height));
+        Json::Insert(Entry, "properties", std::move(Properties));
 
-        Entities.PushBack(Entry);
+        Json::PushBack(Entities, std::move(Entry));
     }
-    Root.Insert("entities", Entities);
+    Json::Insert(Root, "entities", std::move(Entities));
 
     return Root;
 }
